@@ -7,18 +7,7 @@
 
 _trap_start:
     j _trap_exception
-    j _int_exc
-    j _int_exc
-    j _int_exc
-    j _int_exc
-    j _int_exc
-    j _int_exc
-    j _int_exc
-    j _int_exc
-    j _int_exc
-    j _int_exc
-    j _int_exc
-    j _int_exc
+   
 
 
 
@@ -27,12 +16,25 @@ _trap_start:
 _trap_exception:
     csrr a0, mcause;
     addi a1, zero, 0xb
-    beq a0, a1, 1f
+    beq a0, a1, 1f // check for ecall 
+    addi a1, zero, 0x6
+    beq a0,a1, 1f  // check for misalign 
     la a1, begin_signature
     sw a0, 0(a1);
 1:
-    la a1, monitor;
-    sw a0, 0(a1)  
+    call dump_signature
+    la a1, (monitor+0x1000) // Trap output area 
+    csrr a0, mcause 
+    sw a0,0(a1) 
+    csrr t1, mepc
+    sw t1,4(a1)
+    csrr t1,mbadaddr
+    sw t1,8(a1)
+    csrr t1,mstatus 
+    sw t1,12(a1)  
+    
+    la a1, monitor // Termination/result address 
+    sw a0, 0(a1) // write mcause  
 
 _int_exc:
     la a1, monitor;
