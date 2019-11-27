@@ -3,7 +3,7 @@ LDSCRIPT    = $(ROOTDIR)/riscv-target/bonfire/device/rv32im/bonfire.ld
 TRAPHANDLER = $(ROOTDIR)/riscv-target/bonfire/device/rv32im/handler.S
 DEFINES     = -DPRIV_MISA_S=0 -DPRIV_MISA_U=0 -DTRAPHANDLER="\"$(TRAPHANDLER)\""
 
-TARGET_SIM   ?= fusesoc --config=$(ROOTDIR)/riscv-target/bonfire/fusesoc.conf sim bonfire-cpu 
+TARGET_SIM   ?= fusesoc --config=$(ROOTDIR)/riscv-target/bonfire/fusesoc.conf sim --no-export bonfire-cpu 
 TARGET_FLAGS ?= $(RISCV_TARGET_FLAGS)
 
 RUN_TARGET=\

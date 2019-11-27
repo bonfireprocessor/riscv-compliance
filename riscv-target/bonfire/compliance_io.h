@@ -16,5 +16,6 @@
 #define RVTEST_IO_PUTC(_R)
 #define RVTEST_IO_WRITE_STR(_SP, _STR)
 #define RVTEST_IO_ASSERT_GPR_EQ(_SP, _R, _I)
+#define RVTEST_IO_CHECK()
 
 #endif // _COMPLIANCE_IO_H
