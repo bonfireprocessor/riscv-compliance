@@ -35,14 +35,8 @@
 
 
 #define RV_COMPLIANCE_HALT                                                    \
-        /* tell simulation about location of begin_signature */               \
-        la t0, begin_signature;                                               \
-        li t1, TESTUTIL_ADDR_BEGIN_SIGNATURE;                                 \
         sw t0, 0(t1);                                                         \
-        /* tell simulation about location of end_signature */                 \
-        la t0, end_signature;                                                 \
-        li t1, TESTUTIL_ADDR_END_SIGNATURE;                                   \
-        sw t0, 0(t1);                                                         \
+        call dump_signature;                                                  \
         RVTEST_PASS                                                           \
 
 

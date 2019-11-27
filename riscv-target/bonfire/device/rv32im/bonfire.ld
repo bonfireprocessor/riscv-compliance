@@ -35,6 +35,7 @@ SECTIONS
 
 
 monitor = 0x10000000;
+signature_dump_port =0x1ffffffc;
 uart =  0x20000000;
 
 mtime   = 0x0FFFF0000;
