@@ -1,6 +1,6 @@
 
 
-
+.global dump_signature
 
 .section .text.trap;
 .align  4;
@@ -38,4 +38,14 @@ _int_exc:
     la a1, monitor;
     sw x0, 0(a1)  
 
+dump_signature:
+    la a0, signature_dump_port
+    la a1, begin_signature
+    la a2, end_signature
+l2:
+    lw t1,0(a1)
+    sw t1,0(a0)
+    addi a1,a1,4
+    blt a1,a2, l2 
+    ret     
     
