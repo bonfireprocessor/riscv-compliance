@@ -2,12 +2,14 @@ BONFIRE     = $(ROOTDIR)/riscv-target/bonfire/device/rv32im
 LDSCRIPT    = $(ROOTDIR)/riscv-target/bonfire/device/rv32im/bonfire.ld
 TRAPHANDLER = $(ROOTDIR)/riscv-target/bonfire/device/rv32im/handler.S
 DEFINES     = -DPRIV_MISA_S=0 -DPRIV_MISA_U=0 -DTRAPHANDLER="\"$(TRAPHANDLER)\""
+BONFIRE_CONF ?= --BRANCH_PREDICTOR=false --USE_ICACHE=false
 
 TARGET_SIM   ?= fusesoc --config=$(ROOTDIR)/riscv-target/bonfire/fusesoc.conf sim --no-export bonfire-cpu 
 TARGET_FLAGS ?= $(RISCV_TARGET_FLAGS)
 
 RUN_TARGET=\
     $(TARGET_SIM) $(TARGET_FLAGS)  \
+	    $(BONFIRE_CONF) \
         --TestFile=$(work_dir_isa)/$(*).elf.hex \
 	    --signature_file=$(work_dir_isa)/$(*).signature.output
 
