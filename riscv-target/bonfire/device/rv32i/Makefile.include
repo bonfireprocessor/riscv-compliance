@@ -10,7 +10,7 @@ TARGET_SIM   ?= fusesoc --config=$(BONFIRE)/fusesoc.conf --cores-root=$(BONFIRE_
 TARGET_FLAGS ?= $(RISCV_TARGET_FLAGS)
 
 RUN_TARGET=\
-    $(TARGET_SIM) $(TARGET_FLAGS)  \
+    $(TARGET_SIM)  \
 	    $(BONFIRE_CONF) \
         --TestFile=$(work_dir_isa)/$(*).elf.hex \
 	    --signature_file=$(work_dir_isa)/$(*).signature.output
