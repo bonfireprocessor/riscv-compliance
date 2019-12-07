@@ -2,9 +2,11 @@ BONFIRE     = $(ROOTDIR)/riscv-target/bonfire/device/rv32im
 LDSCRIPT    = $(ROOTDIR)/riscv-target/bonfire/device/rv32im/bonfire.ld
 TRAPHANDLER = $(ROOTDIR)/riscv-target/bonfire/device/rv32im/handler.S
 DEFINES     = -DPRIV_MISA_S=0 -DPRIV_MISA_U=0 -DTRAPHANDLER="\"$(TRAPHANDLER)\""
-BONFIRE_CONF ?= --BRANCH_PREDICTOR=false --USE_ICACHE=false
+BONFIRE_CONF ?= --BRANCH_PREDICTOR=true --USE_ICACHE=true
+BONFIRE_CORESROOT ?= $(BONFIRE)
+BONFIRE_CPU ?= bonfire-cpu 
 
-TARGET_SIM   ?= fusesoc --config=$(ROOTDIR)/riscv-target/bonfire/fusesoc.conf sim --no-export bonfire-cpu 
+TARGET_SIM   ?= fusesoc --config=$(BONFIRE)/fusesoc.conf --cores-root=$(BONFIRE_CORESROOT) sim --no-export $(BONFIRE_CPU) 
 TARGET_FLAGS ?= $(RISCV_TARGET_FLAGS)
 
 RUN_TARGET=\
@@ -13,7 +15,7 @@ RUN_TARGET=\
         --TestFile=$(work_dir_isa)/$(*).elf.hex \
 	    --signature_file=$(work_dir_isa)/$(*).signature.output
 
-RISCV_PREFIX   ?= riscv32-unknown-elf-
+RISCV_PREFIX   ?= riscv64-unknown-elf-
 RISCV_GCC      ?= $(RISCV_PREFIX)gcc
 RISCV_OBJDUMP  ?= $(RISCV_PREFIX)objdump
 RISCV_OBJCOPY  ?= $(RISCV_PREFIX)objcopy
