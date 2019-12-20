@@ -14,15 +14,7 @@ _trap_start:
 // This could be exception or user interrupt
 // 0xb is the environment call to indicate the end
 _trap_exception:
-    csrr a0, mcause;
-    addi a1, zero, 0xb
-    beq a0, a1, 1f // check for ecall 
-    addi a1, zero, 0x6
-    beq a0,a1, 1f  // check for misalign 
-    la a1, begin_signature
-    sw a0, 0(a1);
-1:
-    call dump_signature
+  
     la a1, (monitor+0x1000) // Trap output area 
     csrr a0, mcause 
     sw a0,0(a1) 
@@ -34,7 +26,7 @@ _trap_exception:
     sw t1,12(a1)  
     
     la a1, monitor // Termination/result address 
-    sw a0, 0(a1) // write mcause  
+    sw x31, 0(a1) // write x31 register 
 
 _int_exc:
     la a1, monitor;
