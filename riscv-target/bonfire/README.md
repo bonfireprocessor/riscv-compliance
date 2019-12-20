@@ -45,3 +45,7 @@ For a list of supported generics in BONFIRE_CONF invoke
 
     fusesoc --cores-root=riscv-target/bonfire/device/rv32i core-info bonfire-cpu
 
+### Example run commands
+Run a specific test (I-ADD-01) for a bonfire repository located below ~development/bonfire with a specific configuration
+
+    make RISCV_TARGET=bonfire BONFIRE_CORESROOT=~/development/bonfire RISCV_TEST='I-ADD-01' BONFIRE_CONF="--BRANCH_PREDICTOR=true"
