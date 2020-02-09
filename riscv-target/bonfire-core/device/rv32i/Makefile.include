@@ -1,0 +1,39 @@
+BONFIRE     = $(ROOTDIR)/riscv-target/bonfire-core/device/rv32i
+LDSCRIPT    = $(ROOTDIR)/riscv-target/bonfire-core/device/rv32i/bonfire.ld
+DEFINES     = -DPRIV_MISA_S=0 -DPRIV_MISA_U=0
+#BONFIRE_CONF ?= --BRANCH_PREDICTOR=true --USE_ICACHE=true
+#BONFIRE_CORESROOT ?= $(BONFIRE)
+#BONFIRE_CPU ?= bonfire-cpu 
+BONFIRE_CORE_ROOT ?=~/development/bonfire/bonfire-core
+
+TARGET_SIM   ?= python $(BONFIRE_CORE_ROOT)/tb_run.py
+TARGET_FLAGS ?= $(RISCV_TARGET_FLAGS)
+
+RUN_TARGET=\
+    $(TARGET_SIM)  \
+        --elf=$(work_dir_isa)/$(*).elf \
+		--hex=$(work_dir_isa)/$(*).elf.hex \
+		--sig=$(work_dir_isa)/$(*).signature.output
+	    
+
+RISCV_PREFIX   ?= riscv64-unknown-elf-
+RISCV_GCC      ?= $(RISCV_PREFIX)gcc
+RISCV_OBJDUMP  ?= $(RISCV_PREFIX)objdump
+RISCV_OBJCOPY  ?= $(RISCV_PREFIX)objcopy
+RISCV_NM       ?= $(RISCV_PREFIX)nm
+RISCV_READELF  ?= $(RISCV_PREFIX)readelf
+RISCV_GCC_OPTS ?= -static  -fvisibility=hidden -nostdlib -nostartfiles
+HEXDUMP ?= hexdump
+
+COMPILE_TARGET=\
+	$$(RISCV_GCC) $(2) $$(RISCV_GCC_OPTS) \
+		-I$(ROOTDIR)/riscv-test-env/ \
+		-I$(ROOTDIR)/riscv-test-env/p/ \
+		-I$(TARGETDIR)/$(RISCV_TARGET)/ \
+		$(DEFINES) -T$(LDSCRIPT)  $$< \
+		 -o $(work_dir_isa)/$$@; \
+    $$(RISCV_OBJDUMP) -D $(work_dir_isa)/$$@ > $(work_dir_isa)/$$@.objdump; \
+    $$(RISCV_READELF) -a $(work_dir_isa)/$$@ > $(work_dir_isa)/$$@.readelf; \
+    $$(RISCV_NM) $(work_dir_isa)/$$@ > $(work_dir_isa)/$$@.nm; \
+    $(RISCV_OBJCOPY) -S -O binary $(work_dir_isa)/$$@  $(work_dir_isa)/$(basename $$@).bin; \
+	$(HEXDUMP) -v -e '1/4 "%08x\n"' $(work_dir_isa)/$(basename $$@).bin > $(work_dir_isa)/$(basename $$@).hex
