@@ -5,7 +5,7 @@ BONFIRE_CONF ?=
 #BONFIRE_CORESROOT ?= $(BONFIRE)
 #BONFIRE_CPU ?= bonfire-cpu 
 BONFIRE_CORE_ROOT ?=~/development/bonfire/bonfire-core
-PYTHON ?= python
+PYTHON ?= python3
 
 TARGET_SIM   ?= $(PYTHON) $(BONFIRE_CORE_ROOT)/tb_run.py $(BONFIRE_CONF)
 TARGET_FLAGS ?= $(RISCV_TARGET_FLAGS)
