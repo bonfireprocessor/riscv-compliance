@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005-2019 Imperas Software Ltd., www.imperas.com
+ * Copyright (c) 2005-2020 Imperas Software Ltd., www.imperas.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -89,6 +89,7 @@ typedef enum riscvITypeE {
     RV_IT_MRET_I,
     RV_IT_SRET_I,
     RV_IT_URET_I,
+    RV_IT_DRET_I,
     RV_IT_WFI_I,
 
     // system fence I-type instruction
@@ -154,6 +155,78 @@ typedef enum riscvITypeE {
     // X-extension instructions
     RV_IT_CUSTOM,
 
+    // B-extension R-type instructions
+    RV_IT_ANDN_R,
+    RV_IT_ORN_R,
+    RV_IT_XNOR_R,
+    RV_IT_SLO_R,
+    RV_IT_SRO_R,
+    RV_IT_ROL_R,
+    RV_IT_ROR_R,
+    RV_IT_SBCLR_R,
+    RV_IT_SBSET_R,
+    RV_IT_SBINV_R,
+    RV_IT_SBEXT_R,
+    RV_IT_GORC_R,
+    RV_IT_GREV_R,
+    RV_IT_CLZ_R,
+    RV_IT_CTZ_R,
+    RV_IT_PCNT_R,
+    RV_IT_SEXT_R,
+    RV_IT_CRC32_R,
+    RV_IT_CRC32C_R,
+    RV_IT_CLMUL_R,
+    RV_IT_CLMULR_R,
+    RV_IT_CLMULH_R,
+    RV_IT_MIN_R,
+    RV_IT_MAX_R,
+    RV_IT_MINU_R,
+    RV_IT_MAXU_R,
+    RV_IT_SHFL_R,
+    RV_IT_UNSHFL_R,
+    RV_IT_BDEP_R,
+    RV_IT_BEXT_R,
+    RV_IT_PACK_R,
+    RV_IT_PACKH_R,
+    RV_IT_PACKU_R,
+    RV_IT_BMATFLIP_R,
+    RV_IT_BMATOR_R,
+    RV_IT_BMATXOR_R,
+    RV_IT_BFP_R,
+    RV_IT_ADDWU_R,
+    RV_IT_SUBWU_R,
+    RV_IT_ADDU_W_R,
+    RV_IT_SUBU_W_R,
+    RV_IT_SHADD_R,
+
+    // B-extension I-type instructions
+    RV_IT_SLOI_I,
+    RV_IT_SROI_I,
+    RV_IT_RORI_I,
+    RV_IT_SBCLRI_I,
+    RV_IT_SBSETI_I,
+    RV_IT_SBINVI_I,
+    RV_IT_SBEXTI_I,
+    RV_IT_GORCI_I,
+    RV_IT_ORCB_I,
+    RV_IT_ORC16_I,
+    RV_IT_GREVI_I,
+    RV_IT_REV8_I,
+    RV_IT_REV_I,
+    RV_IT_SHFLI_I,
+    RV_IT_UNSHFLI_I,
+    RV_IT_ADDIWU_I,
+    RV_IT_SLLIU_W_I,
+
+    // B-extension R4-type instructions
+    RV_IT_CMIX_R4,
+    RV_IT_CMOV_R4,
+    RV_IT_FSL_R4,
+    RV_IT_FSR_R4,
+
+    // B-extension R3I-type instructions
+    RV_IT_FSRI_R3I,
+
     // V-extension R-type instructions
     RV_IT_VSETVL_R,
 
@@ -215,7 +288,9 @@ typedef enum riscvITypeE {
     RV_IT_VSADD_VR,
     RV_IT_VSSUBU_VR,
     RV_IT_VSSUB_VR,
+    RV_IT_VAADDU_VR,
     RV_IT_VAADD_VR,
+    RV_IT_VASUBU_VR,
     RV_IT_VASUB_VR,
     RV_IT_VSMUL_VR,
     RV_IT_VWSMACCU_VR,
@@ -255,6 +330,10 @@ typedef enum riscvITypeE {
     RV_IT_VWMACC_VR,
     RV_IT_VWMACCSU_VR,
     RV_IT_VWMACCUS_VR,
+    RV_IT_VQMACCU_VR,
+    RV_IT_VQMACC_VR,
+    RV_IT_VQMACCSU_VR,
+    RV_IT_VQMACCUS_VR,
 
     // V-extension IVV-type instructions
     RV_IT_VWREDSUMU_VS,
@@ -321,6 +400,8 @@ typedef enum riscvITypeE {
     RV_IT_VFNCVT_FX_V,
     RV_IT_VFNCVT_FF_V,
     RV_IT_VFSQRT_V,
+    RV_IT_VFRSQRTE7_V,
+    RV_IT_VFRECE7_V,
     RV_IT_VFCLASS_V,
     RV_IT_VFWREDSUM_VS,
     RV_IT_VFWREDOSUM_VS,
@@ -375,6 +456,7 @@ typedef enum riscvITypeE {
     RV_IT_VSADD_VI,
     RV_IT_VAADD_VI,
     RV_IT_VSLL_VI,
+    RV_IT_VMVR_VI,
     RV_IT_VSRL_VI,
     RV_IT_VSRA_VI,
     RV_IT_VSSRL_VI,
@@ -386,19 +468,15 @@ typedef enum riscvITypeE {
 
     // V-extension FVF-type instructions
     RV_IT_VFMV_S_F,
+    RV_IT_VFSLIDE1UP_VF,
+    RV_IT_VFSLIDE1DOWN_VF,
 
     // V-extension MVX-type instructions
     RV_IT_VMV_S_X,
     RV_IT_VSLIDE1UP_VX,
     RV_IT_VSLIDE1DOWN_VX,
-    RV_IT_VWADDU_VX,
-    RV_IT_VWADD_VX,
-    RV_IT_VWSUBU_VX,
-    RV_IT_VWSUB_VX,
-    RV_IT_VWADDU_WX,
-    RV_IT_VWADD_WX,
-    RV_IT_VWSUBU_WX,
-    RV_IT_VWSUB_WX,
+    RV_IT_VZEXT_V,
+    RV_IT_VSEXT_V,
 
     // KEEP LAST
     RV_IT_LAST
@@ -450,10 +528,12 @@ typedef enum riscvVITypeE {
 
     RV_VIT_NA,      // not a vector instruction
     RV_VIT_V,       // instruction type .v
+    RV_VIT_W,       // instruction type .w
     RV_VIT_VV,      // instruction type .vv
     RV_VIT_VI,      // instruction type .vi
     RV_VIT_VX,      // instruction type .vx
     RV_VIT_WV,      // instruction type .wv
+    RV_VIT_WI,      // instruction type .wi
     RV_VIT_WX,      // instruction type .wx
     RV_VIT_VF,      // instruction type .vf
     RV_VIT_WF,      // instruction type .wf
@@ -465,8 +545,25 @@ typedef enum riscvVITypeE {
     RV_VIT_VXM,     // instruction type .vxm
     RV_VIT_VIM,     // instruction type .vim
     RV_VIT_VFM,     // instruction type .vfm
+    RV_VIT_VN,      // instruction type .v/.w (version-dependent)
+    RV_VIT_VVN,     // instruction type .vv/.wv (version-dependent)
+    RV_VIT_VIN,     // instruction type .vi/.wi (version-dependent)
+    RV_VIT_VXN,     // instruction type .vx/.wx (version-dependent)
+    RV_VIT_V_V,     // instruction type .v.v
+    RV_VIT_LAST     // KEEP LAST: for sizing
 
 } riscvVIType;
+
+//
+// This is used to categorize CSR update semantics
+//
+typedef enum riscvWholeDescE {
+
+    RV_WD_NA,       // not a whole register instruction
+    RV_WD_LD_ST,    // whole register load/store
+    RV_WD_MV,       // whole register move
+
+} riscvWholeDesc;
 
 //
 // This defines the maximum number of argument registers
@@ -486,12 +583,9 @@ typedef struct riscvInstrInfoS {
     Uns8              bytes;            // instruction size in bytes (2 or 4)
     riscvIType        type;             // instruction type
     riscvArchitecture arch;             // architecture requirements
-    Bool              explicitType;     // whether types are explicit in opcode
-    Bool              explicitW;        // whether 'w' explicit in opcode
-    Bool              unsExt;           // whether to extend unsigned
-    Bool              csrInOp;          // whether to emit CSR as part of opcode
+    riscvVIType       VIType;           // vector instruction type
     Uns32             memBits;          // load/store size
-
+    Uns32             eew;              // explicit EEW encoding
     Uns64             c;                // constant value
     riscvRegDesc      r[RV_MAX_AREGS];  // argument registers
     riscvRegDesc      mask;             // mask register
@@ -500,11 +594,17 @@ typedef struct riscvInstrInfoS {
     riscvFenceDesc    succ;             // successor fence
     riscvRMDesc       rm;               // rounding mode
     riscvCSRUDesc     csrUpdate;        // CSR update semantics
-    riscvVIType       VIType;           // vector instruction type
+    riscvWholeDesc    isWhole;          // is this a whole-register instruction?
+    riscvVType        vtype;            // vector type information
     Uns32             csr;              // CSR index
-    Uns8              vsew;             // vsew value
-    Uns8              vlmul;            // vmul value
     Uns8              nf;               // nf value
+    Uns8              eewDiv;           // explicit EEW divisor
+    Uns8              shN;              // shN prefix
+    Uns8              explicitType;     // whether types are explicit in opcode
+    Bool              explicitW;        // whether 'w' explicit in opcode
+    Bool              explicitRM;       // whether rounding explicit in opcode
+    Bool              unsExt;           // whether to extend unsigned
+    Bool              csrInOp;          // whether to emit CSR as part of opcode
     Bool              isFF;             // is this a first-fault instruction?
 
 } riscvInstrInfo;

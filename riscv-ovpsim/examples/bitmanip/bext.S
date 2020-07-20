@@ -1,6 +1,6 @@
 /*
  *
- * Copyright (c) 2005-2019 Imperas Software Ltd., www.imperas.com
+ * Copyright (c) 2005-2020 Imperas Software Ltd., www.imperas.com
  *
  * The contents of this file are provided under the Software License
  * Agreement that you accepted before downloading this file.
@@ -46,17 +46,31 @@
 //
 ////////////////////////////////////////////////////////////////////////////////
 
+//
+// USE_FU540_LOG - logging via UART on FU540 Board
+// USE_ECALL_LOG - logging via write syscall
+// USE_STORE_LOG - logging via Store to memory location
+// _default_     - logging via custom instruction
+//
 
 ////////////////////////////////////////////////////////////////////////////////
 // INITIALIZE I/O
 ////////////////////////////////////////////////////////////////////////////////
 
+#undef SX
+#undef LX
+#ifdef XLEN32
+    #define SX sw
+    #define LX lw
+#else
+    #define SX sd
+    #define LX ld
+#endif
+
+
 .macro IO_INIT
-
 #if (USE_FU540_LOG==1)
-
     #ifdef SIFIVE_FU540
-
         // executing on board
         csrr    t0, mhartid     // 4-byte op
         li      t1, 4           // 2-byte op
@@ -64,20 +78,18 @@
         lui     t5, 0x10010     // 4-byte op
         li      a0, 0x1         // 2-byte op
         sw      a0, 8(t5)       // 4-byte op
-
     #else
-
         // board-compatible simulation
         .word 0x00000013        // 4-byte nop (match board code size)
         .word 0x00000013        // 4-byte nop (match board code size)
         .word 0x00000013        // 4-byte nop (match board code size)
         .word 0x00000013        // 4-byte nop (match board code size)
         .word 0x00000013        // 4-byte nop (match board code size)
-
     #endif
-
 #endif
-
+#if ((USE_ECALL_LOG==1) || (USE_STORE_LOG==1))
+        li      sp, 0x10000000
+#endif
 .endm
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -85,37 +97,50 @@
 ////////////////////////////////////////////////////////////////////////////////
 
 .macro IO_PUTC _R
-
-#if (USE_FU540_LOG!=1)
-
-        // normal test case simulation
-        .word 0x0005200B
-
-#else
-
+#if (USE_FU540_LOG==1)
     #ifdef SIFIVE_FU540
-
         // executing on board
         lui         t5, 0x10010
         L1\@:
         lw          t6, (t5)
         bnez        t6, L1\@
         sw          \_R, (t5)
-
     #else
-
         // board-compatible simulation
         lui         t5, 0x10010
         lw          t6, (t5)
         .word 0x00000013    // 4-byte nop (match board code size)
         sw          \_R, (t5)
-//      .word 0x00000013    // 4-byte nop (match board code size)
-//      .word 0x00000013    // 4-byte nop (match board code size)
-//      .word 0x00000013    // 4-byte nop (match board code size)
-//      .word 0x0005200B
-
     #endif
 
+#elif ((USE_ECALL_LOG==1) || (USE_STORE_LOG==1))
+    SX a0,-40(sp)
+    SX a1,-48(sp)
+    SX a2,-56(sp)
+    SX a3,-64(sp)
+    SX a7,-72(sp)
+    la a1, _test_stdout // a1 = ptr to buffer
+    sb a0, 0(a1)
+    li a0, 1
+    li a2, 1        // a2 = character count
+    li a3, 0        // a3 = ?
+    li a7, 64       // Write code
+    #if (USE_ECALL_LOG==1)
+        ecall
+    #endif
+    #if (USE_STORE_LOG==1)
+        nop
+        nop
+    #endif
+    LX a0,-40(sp)
+    LX a1,-48(sp)
+    LX a2,-56(sp)
+    LX a3,-64(sp)
+    LX a7,-72(sp)
+
+#else
+        // normal test case simulation - custome instruction
+        .word 0x0005200B
 #endif
 .endm
 
@@ -127,6 +152,10 @@
 
 _start:
         IO_INIT
+#if (INSTALL_TRAPHANDLER==1)
+        la      a0, _traphandler
+        csrw    mtvec, a0
+#endif
         j       START_TEST
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -135,37 +164,47 @@ _start:
 ////////////////////////////////////////////////////////////////////////////////
 
 #if (USE_FU540_LOG==1)
-
-    exit_test:
+    _test_exit:
     #ifdef SIFIVE_FU540
-
         // executing on board
-        j exit_test         // 2-byte op
+        j _test_exit         // 2-byte op
         .word 0x00000013    // 4-byte nop (match simulator code size)
-
     #else
-
         // board-compatible simulation
         li          a0,0    // 2-byte op
         .word 0x0005200B    // 4-byte op
-
     #endif
-
+#else
+        _test_exit:
+            j _test_exit
 #endif
 
 .macro EXIT_TEST
 #if (USE_FU540_LOG==1)
-
         // executing on board or simulation of board
-        j exit_test
-#else
+        j _test_exit
 
+#elif (USE_ECALL_LOG==1)
+        li a7, 93 // Exit code
+        ecall
+
+#elif (USE_STORE_LOG==1)
+        j _test_exit
+
+#else
         // normal test case simulation
         li          a0,0
         .word 0x0005200B
-
 #endif
 .endm
+
+////////////////////////////////////////////////////////////////////////////////
+// Install a trap handler to exit
+////////////////////////////////////////////////////////////////////////////////
+#if (INSTALL_TRAPHANDLER==1)
+_traphandler:
+	j shutDown
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 // WRITE_A0: write character in a0
@@ -202,13 +241,24 @@ _start:
 
 ////////////////////////////////////////////////////////////////////////////////
 // WRITE_RAWS <gpr>: write raw register, short form with no leading zeros
-// (destroys a0, a1, a2, a3, lr)
+// (destroys a0, t0-t2, lr)
 ////////////////////////////////////////////////////////////////////////////////
 
 .macro WRITE_RAWS _R
 #ifndef SYS_QUIET
         mv          a0, \_R
         jal         writeA0Short
+#endif
+.endm
+
+////////////////////////////////////////////////////////////////////////////////
+// WRITE_RAW4 <gpr>: write 32-bit raw register (destroys a0, t0-t2, lr)
+////////////////////////////////////////////////////////////////////////////////
+
+.macro WRITE_RAW4 _R
+#ifndef SYS_QUIET
+        mv          a0, \_R
+        jal         writeA0_4
 #endif
 .endm
 
@@ -333,6 +383,9 @@ _start:
 // writeS: write string in a0 (destroys a0, t0)
 ////////////////////////////////////////////////////////////////////////////////
 
+// stabilize function size (WRITE_A0 implementation may change)
+.align 7
+
 writeS:
 
 #ifndef SYS_QUIET
@@ -367,7 +420,9 @@ writeA0:
         srli        a0, a0, 1
         bnez        a0, writeA0_64
 
+#endif
 writeA0_32:
+#ifndef SYS_QUIET
 
         // reverse register when xlen is 32
         li          t1, 8
@@ -380,7 +435,9 @@ writeA0_32:
         li          t1, 8
         j           writeA0_common
 
+#endif
 writeA0_64:
+#ifndef SYS_QUIET
 
         // reverse register when xlen is 64
         li          t1, 16
@@ -411,7 +468,19 @@ writeA0_common:
         ret
 
 // stabilize function size (WRITE_A0 implementation may change)
-.align 7
+.align 8
+
+////////////////////////////////////////////////////////////////////////////////
+// writeA0_4: write 32-bit register a0 (destroys a0, t0-t2)
+////////////////////////////////////////////////////////////////////////////////
+
+writeA0_4:
+
+#ifndef SYS_QUIET
+        mv          t0, a0
+        li          t2, 0
+#endif
+        j           writeA0_32
 
 ////////////////////////////////////////////////////////////////////////////////
 // writeA0Short: write register a0 with no leading zeros (destroys a0, t0-t2)
@@ -423,15 +492,54 @@ writeA0Short:
 
         mv          t0, a0
 
-        // reverse register
-        mv          t2, zero
+        // determine architectural register width
+        li          a0, -1
+        srli        a0, a0, 31
+        srli        a0, a0, 1
+        bnez        a0, writeA0Short_64
+
+#endif
+writeA0Short_32:
+#ifndef SYS_QUIET
+
+        // reverse register when xlen is 32
+        li          t1, 8
 10000:  slli        t2, t2, 4
         andi        a0, t0, 0xf
         srli        t0, t0, 4
         or          t2, t2, a0
-        bnez        t0, 10000b
+        addi        t1, t1, -1
+        bnez        t1, 10000b
+        li          t1, 8
+        j           writeA0Short_common
+
+#endif
+writeA0Short_64:
+#ifndef SYS_QUIET
+
+        // reverse register when xlen is 64
+        li          t1, 16
+10000:  slli        t2, t2, 4
+        andi        a0, t0, 0xf
+        srli        t0, t0, 4
+        or          t2, t2, a0
+        addi        t1, t1, -1
+        bnez        t1, 10000b
+        li          t1, 16
+
+writeA0Short_common:
+
+        // skip leading zeros
+10000:  andi        a0, t2, 0xf
+        bnez        a0, 10001f
+        li          a0, 1
+        beq         a0, t1, 10001f
+        srli        t2, t2, 4
+        addi        t1, t1, -1
+        j           10000b
 
         // write reversed characters
+10001:
         li          t0, 10
 10000:  andi        a0, t2, 0xf
         blt         a0, t0, 10001f
@@ -440,7 +548,8 @@ writeA0Short:
 10001:  addi        a0, a0, '0'
 10002:  WRITE_A0
         srli        t2, t2, 4
-        bnez        t2, 10000b
+        addi        t1, t1, -1
+        bnez        t1, 10000b
 
 #endif
 
@@ -616,6 +725,7 @@ DEFINE_REG_LABEL     f31
 #define vstart          0x008
 #define vxsat           0x009
 #define vxrm            0x00A
+#define vcsr            0x00F
 #define uscratch        0x040
 #define uepc            0x041
 #define ucause          0x042
@@ -625,10 +735,14 @@ DEFINE_REG_LABEL     f31
 #define sideleg         0x103
 #define stval           0x143
 #define satp            0x180
+#define mstatush        0x310
 #define mcountinhibit   0x320
 #define mtval           0x343
 #define vl              0xC20
 #define vtype           0xC21
+#define vlenb           0xC22
+#define dscratch0       0x7B2
+#define dscratch1       0x7B3
 
 .macro DEFINE_REG_LABEL_X _L, _S
         LABEL_\_L : .string "\_S"
@@ -757,6 +871,7 @@ DEFINE_REG_LABEL     mcycleh
 DEFINE_REG_LABEL     minstret
 DEFINE_REG_LABEL     minstreth
 DEFINE_REG_LABEL     mcounteren
+DEFINE_REG_LABEL_X   mstatush, "mstatush"   // not recognized by assembler
 
 // Machine Trap Handling
 DEFINE_REG_LABEL     mscratch
@@ -883,6 +998,77 @@ DEFINE_REG_LABEL_X   vxsat,  "vxsat"    // not recognized by assembler
 DEFINE_REG_LABEL_X   vxrm,   "vxrm"     // not recognized by assembler
 DEFINE_REG_LABEL_X   vtype,  "vtype"    // not recognized by assembler
 DEFINE_REG_LABEL_X   vl,     "vl"       // not recognized by assembler
+DEFINE_REG_LABEL_X   vlenb,  "vlenb"    // not recognized by assembler
+DEFINE_REG_LABEL_X   vcsr,   "vcsr"     // not recognized by assembler
+
+// Why is this here???
+#if ((USE_ECALL_LOG==1) || (USE_STORE_LOG==1))
+.align 4
+_test_stdout:
+	.word 0x0
+#endif
+
+// Debug/Trace
+DEFINE_REG_LABEL     tselect
+DEFINE_REG_LABEL     tdata1
+DEFINE_REG_LABEL     tdata2
+DEFINE_REG_LABEL     tdata3
+
+// Debug
+DEFINE_REG_LABEL     dcsr
+DEFINE_REG_LABEL     dpc
+DEFINE_REG_LABEL_X   dscratch0, "dscratch0" // not recognized by assembler
+DEFINE_REG_LABEL_X   dscratch1, "dscratch1" // not recognized by assembler
+
+////////////////////////////////////////////////////////////////////////////////
+// CLIC CSR INDICES (where assembler does not recognize them)
+////////////////////////////////////////////////////////////////////////////////
+
+#define utvt            0x007
+#define unxti           0x045
+#define uintstatus      0xC46
+#define uscratchcswl    0x049
+#define uintthresh      0x04A
+
+#define stvt            0x107
+#define snxti           0x145
+#define sintstatus      0xD46
+#define sscratchcsw     0x148
+#define sscratchcswl    0x149
+#define sintthresh      0x14A
+
+#define mtvt            0x307
+#define mnxti           0x345
+#define mintstatus      0xF46
+#define mscratchcsw     0x348
+#define mscratchcswl    0x349
+#define mintthresh      0x34A
+#define mclicbase       0x34B
+
+////////////////////////////////////////////////////////////////////////////////
+// CLIC LABELS
+////////////////////////////////////////////////////////////////////////////////
+
+DEFINE_REG_LABEL_X   utvt,         "utvt"           // not recognized by assembler
+DEFINE_REG_LABEL_X   unxti,        "unxti"          // not recognized by assembler
+DEFINE_REG_LABEL_X   uintstatus,   "uintstatus"     // not recognized by assembler
+DEFINE_REG_LABEL_X   uscratchcswl, "uscratchcswl"   // not recognized by assembler
+DEFINE_REG_LABEL_X   uintthresh,   "uintthresh"     // not recognized by assembler
+
+DEFINE_REG_LABEL_X   stvt,         "stvt"           // not recognized by assembler
+DEFINE_REG_LABEL_X   snxti,        "snxti"          // not recognized by assembler
+DEFINE_REG_LABEL_X   sintstatus,   "sintstatus"     // not recognized by assembler
+DEFINE_REG_LABEL_X   sscratchcsw,  "sscratchcsw"    // not recognized by assembler
+DEFINE_REG_LABEL_X   sscratchcswl, "sscratchcswl"   // not recognized by assembler
+DEFINE_REG_LABEL_X   sintthresh,   "sintthresh"     // not recognized by assembler
+
+DEFINE_REG_LABEL_X   mtvt,         "mtvt"           // not recognized by assembler
+DEFINE_REG_LABEL_X   mnxti,        "mnxti"          // not recognized by assembler
+DEFINE_REG_LABEL_X   mintstatus,   "mintstatus"     // not recognized by assembler
+DEFINE_REG_LABEL_X   mscratchcsw,  "mscratchcsw"    // not recognized by assembler
+DEFINE_REG_LABEL_X   mscratchcswl, "mscratchcswl"   // not recognized by assembler
+DEFINE_REG_LABEL_X   mintthresh,   "mintthresh"     // not recognized by assembler
+DEFINE_REG_LABEL_X   mclicbase,    "mclicbase"      // not recognized by assembler
 
 // leave space for new labels
 .align 11
@@ -913,7 +1099,7 @@ DEFINE_REG_LABEL_X   vl,     "vl"       // not recognized by assembler
 # (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF
 # THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #
-.include "extB.S.include"
+#include "extB.S.include"
 
 # use s0(r8)  - s1(r9)
 # use s2(r18) - s11(r27)

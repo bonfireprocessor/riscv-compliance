@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005-2019 Imperas Software Ltd., www.imperas.com
+ * Copyright (c) 2005-2020 Imperas Software Ltd., www.imperas.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -66,6 +66,7 @@ const vmiIASAttr modelAttrs = {
     // CONSTRUCTOR/DESTRUCTOR ROUTINES
     ////////////////////////////////////////////////////////////////////////
 
+    .smpNameCB          = riscvGetSMPName,
     .constructorCB      = riscvConstructor,
     .postConstructorCB  = riscvPostConstructor,
     .vmInitCB           = riscvVMInit,
@@ -79,6 +80,8 @@ const vmiIASAttr modelAttrs = {
     .endBlockCB         = riscvEndBlock,
     .morphCB            = riscvMorph,
     .fetchSnapCB        = riscvFetchSnap,
+    .rdSnapCB           = riscvRdSnap,
+    .wrSnapCB           = riscvWrSnap,
 
     ////////////////////////////////////////////////////////////////////////
     // SIMULATION SUPPORT ROUTINES
@@ -99,6 +102,8 @@ const vmiIASAttr modelAttrs = {
     .wrAlignExceptCB    = riscvWrAlignExcept,
     .rdAbortExceptCB    = riscvRdAbortExcept,
     .wrAbortExceptCB    = riscvWrAbortExcept,
+    .rdDeviceExceptCB   = riscvRdDeviceExcept,
+    .wrDeviceExceptCB   = riscvWrDeviceExcept,
     .ifetchExceptCB     = riscvIFetchExcept,
     .arithResultCB      = riscvArithResult,
 

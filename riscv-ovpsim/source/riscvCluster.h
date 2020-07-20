@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005-2019 Imperas Software Ltd., www.imperas.com
+ * Copyright (c) 2005-2020 Imperas Software Ltd., www.imperas.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -38,4 +38,4 @@ Bool riscvIsClusterMember(riscvP riscv);
 //
 // Return the processor variant to use for the given member of an AMP cluster
 //
-const char *riscvGetClusterVariant(riscvP cluster, riscvP member);
+const char *riscvGetClusterVariant(riscvP member);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005-2019 Imperas Software Ltd., www.imperas.com
+ * Copyright (c) 2005-2020 Imperas Software Ltd., www.imperas.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -89,6 +89,16 @@ Uns64 riscvVMReadPMPAddr(riscvP riscv, Uns32 index);
 // the new effective value
 //
 Uns64 riscvVMWritePMPAddr(riscvP riscv, Uns32 index, Uns64 newValue);
+
+//
+// Allocate PMP structures
+//
+void riscvVMNewPMP(riscvP riscv);
+
+//
+// Free PMP structures
+//
+void riscvVMFreePMP(riscvP riscv);
 
 //
 // Reset PMP unit

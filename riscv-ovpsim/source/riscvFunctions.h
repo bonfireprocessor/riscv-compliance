@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005-2019 Imperas Software Ltd., www.imperas.com
+ * Copyright (c) 2005-2020 Imperas Software Ltd., www.imperas.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@
 
 
 // constructor & destructor
+VMI_SMP_NAME_FN(riscvGetSMPName);
 VMI_CONSTRUCTOR_FN(riscvConstructor);
 VMI_POST_CONSTRUCTOR_FN(riscvPostConstructor);
 VMI_VMINIT_FN(riscvVMInit);
@@ -62,6 +63,10 @@ VMI_RD_ALIGN_EXCEPT_FN(riscvRdAlignExcept);
 VMI_WR_ALIGN_EXCEPT_FN(riscvWrAlignExcept);
 VMI_RD_ABORT_EXCEPT_FN(riscvRdAbortExcept);
 VMI_WR_ABORT_EXCEPT_FN(riscvWrAbortExcept);
+VMI_RD_DEVICE_EXCEPT_FN(riscvRdDeviceExcept);
+VMI_WR_DEVICE_EXCEPT_FN(riscvWrDeviceExcept);
+VMI_RD_WR_SNAP_FN(riscvRdSnap);
+VMI_RD_WR_SNAP_FN(riscvWrSnap);
 VMI_IFETCH_FN(riscvIFetchExcept);
 VMI_ARITH_RESULT_FN(riscvArithResult);
 

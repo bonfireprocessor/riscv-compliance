@@ -12,8 +12,8 @@ TARGET_FLAGS ?= $(RISCV_TARGET_FLAGS)
 RUN_TARGET=\
     $(TARGET_SIM)  \
 	    $(BONFIRE_CONF) \
-        --TestFile=$(work_dir_isa)/$(*).elf.hex \
-	    --signature_file=$(work_dir_isa)/$(*).signature.output
+        --TestFile=$(*).elf.hex \
+	    --signature_file=$(*).signature.output
 
 RISCV_PREFIX   ?= riscv64-unknown-elf-
 RISCV_GCC      ?= $(RISCV_PREFIX)gcc
@@ -25,14 +25,13 @@ RISCV_GCC_OPTS ?= -static  -fvisibility=hidden -nostdlib -nostartfiles
 HEXDUMP ?= hexdump
 
 COMPILE_TARGET=\
-	$$(RISCV_GCC) $(2) $$(RISCV_GCC_OPTS) \
+	$$(RISCV_GCC) $(1) $$(RISCV_GCC_OPTS) \
 		-I$(ROOTDIR)/riscv-test-env/ \
 		-I$(ROOTDIR)/riscv-test-env/p/ \
 		-I$(TARGETDIR)/$(RISCV_TARGET)/ \
-		$(DEFINES) -T$(LDSCRIPT)  $$< \
-		 -o $(work_dir_isa)/$$@; \
-    $$(RISCV_OBJDUMP) -D $(work_dir_isa)/$$@ > $(work_dir_isa)/$$@.objdump; \
-    $$(RISCV_READELF) -a $(work_dir_isa)/$$@ > $(work_dir_isa)/$$@.readelf; \
-    $$(RISCV_NM) $(work_dir_isa)/$$@ > $(work_dir_isa)/$$@.nm; \
-    $(RISCV_OBJCOPY) -S -O binary $(work_dir_isa)/$$@  $(work_dir_isa)/$(basename $$@).bin; \
-	$(HEXDUMP) -v -e '1/4 "%08x\n"' $(work_dir_isa)/$(basename $$@).bin > $(work_dir_isa)/$(basename $$@).hex
+		$(DEFINES) -T$(LDSCRIPT) $$(<) \
+		-o $$(@); \
+    $$(RISCV_OBJDUMP) -D $$(@) > $$(@).objdump; \
+    $$(RISCV_READELF) -a $$(@) > $$(@).readelf; \
+    $$(RISCV_OBJCOPY) -O binary $$(@) $$(@).bin; \
+    $(HEXDUMP) -v -e '1/4 "%08x\n"' $$(@).bin > $$(@).hex  

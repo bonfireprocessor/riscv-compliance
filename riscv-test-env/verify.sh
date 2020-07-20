@@ -16,12 +16,12 @@ do
     # Ensure both files exist
     #
     if [ -f ${ref} ] && [ -f ${sig} ]; then 
-        echo -n "Check $(printf %16s ${stub})"
+        echo -n "Check $(printf %24s ${stub})"
     else
-        echo    "Check $(printf %16s ${stub}) ... IGNORE"
+        echo    "Check $(printf %24s ${stub}) ... IGNORE"
         continue
     fi
-    diff --strip-trailing-cr ${ref} ${sig} #&> /dev/null
+    diff --ignore-case --strip-trailing-cr ${ref} ${sig} #&> /dev/null
     if [ $? == 0 ]
     then
         echo " ... OK"
@@ -45,14 +45,15 @@ do
 done
 
 declare -i status=0
-if [ ${FAIL} == 0 ]
-then
+if [ ${FAIL} == 0 ]; then
     echo "--------------------------------"
-    echo "OK: ${RUN}/${RUN}"
+    echo -n "OK: ${RUN}/${RUN} "
     status=0
 else
     echo "--------------------------------"
-    echo "FAIL: ${FAIL}/${RUN}"
+    echo -n "FAIL: ${FAIL}/${RUN} "
     status=1
 fi
+echo "RISCV_TARGET=${RISCV_TARGET} RISCV_DEVICE=${RISCV_DEVICE} RISCV_ISA=${RISCV_ISA}"
+echo
 exit ${status}

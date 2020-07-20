@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005-2019 Imperas Software Ltd., www.imperas.com
+ * Copyright (c) 2005-2020 Imperas Software Ltd., www.imperas.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,6 +23,9 @@
 #include "riscvBlockState.h"
 #include "riscvRegisterTypes.h"
 #include "riscvTypeRefs.h"
+#include "riscvTypes.h"
+#include "riscvVectorTypes.h"
+#include "riscvVariant.h"
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -47,15 +50,38 @@ typedef struct illegalDescS {
 }
 
 //
+// Macro used to define illegalDesc structure and emit an Illegal Instruction
+// using it (operand check)
+//
+#define ILLEGAL_OPERAND_MESSAGE(_RISCV, _ID, _DETAIL, _OPERAND) { \
+    static illegalDesc _DESC = { .id=CPU_PREFIX"_"_ID, .detail=_DETAIL};    \
+    riscvEmitIllegalOperandMessageDesc(_RISCV, &_DESC, _OPERAND);           \
+}
+
+//
 // Emit Illegal Instruction because the current mode has insufficient
 // privilege
 //
 void riscvEmitIllegalInstructionMode(riscvP riscv);
 
 //
+// Emit code to take an Illegal Instruction exception for the given reason
+//
+void riscvEmitIllegalInstructionMessage(riscvP riscv, const char *reason);
+
+//
 // Emit Illegal Instruction message and take Illegal Instruction exception
 //
 void riscvEmitIllegalInstructionMessageDesc(riscvP riscv, illegalDescP desc);
+
+//
+// Emit Illegal Operand message and take Illegal Instruction exception
+//
+void riscvEmitIllegalOperandMessageDesc(
+    riscvP       riscv,
+    illegalDescP desc,
+    Uns32        operand
+);
 
 //
 // Validate that the given required feature is present and enabled (using
@@ -64,9 +90,9 @@ void riscvEmitIllegalInstructionMessageDesc(riscvP riscv, illegalDescP desc);
 Bool riscvRequireArchPresentMT(riscvP riscv, riscvArchitecture feature);
 
 //
-// Validate that the given required feature is absent
+// Emit blockMask check for the given feature set
 //
-Bool riscvRequireArchAbsentMT(riscvP riscv, riscvArchitecture feature);
+void riscvEmitBlockMask(riscvP riscv, riscvArchitecture features);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -91,16 +117,26 @@ vmiReg riscvGetVMIReg(riscvP riscv, riscvRegDesc r);
 vmiReg riscvGetVMIRegFS(riscvP riscv, riscvRegDesc r, vmiReg tmp);
 
 //
-// Do actions when a register is written (sign extending or NaN boxing, if
+// Do actions when a register is written (extending or NaN boxing, if
 // required)
 //
-void riscvWriteRegSize(riscvP riscv, riscvRegDesc r, Uns32 srcBits);
+void riscvWriteRegSize(
+    riscvP       riscv,
+    riscvRegDesc r,
+    Uns32        srcBits,
+    Bool         signExtend
+);
 
 //
-// Do actions when a register is written (sign extending or NaN boxing, if
+// Do actions when a register is written (extending or NaN boxing, if
 // required) using the derived register size
 //
-void riscvWriteReg(riscvP riscv, riscvRegDesc r);
+void riscvWriteReg(riscvP riscv, riscvRegDesc r, Bool signExtend);
+
+//
+// Return endian for data accesses in the current mode
+//
+memEndian riscvGetCurrentDataEndianMT(riscvP riscv);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -113,14 +149,39 @@ void riscvWriteReg(riscvP riscv, riscvRegDesc r);
 void riscvConfigureFPU(riscvP riscv);
 
 //
-// Adjust JIT code generator state after write of floating point register
+// Adjust JIT code generator state after write of floating point CSR
 //
 void riscvWFS(riscvMorphStateP state, Bool useRS1);
+
+//
+// Adjust JIT code generator state after write of vcsr CSR, which will set
+// vector state dirty and floating point state dirty (if floating point is
+// enabled)
+//
+void riscvWVCSR(riscvMorphStateP state, Bool useRS1);
+
+//
+// Adjust JIT code generator state after write of vector CSR that affects
+// floating point state (behavior clearly defined only after version 20191118)
+//
+void riscvWFSVS(riscvMorphStateP state, Bool useRS1);
 
 //
 // Reset JIT code generator state after possible write of mstatus.FS
 //
 void riscvRstFS(riscvMorphStateP state, Bool useRS1);
+
+//
+// Return VMI register for floating point status flags when written (NOTE:
+// mstatus.FS might need to be updated as well)
+//
+vmiReg riscvGetFPFlagsMT(riscvP riscv);
+
+//
+// Validate the given rounding mode is legal and emit an Illegal Instruction
+// exception call if not
+//
+Bool riscvEmitCheckLegalRM(riscvP riscv, riscvRMDesc rm);
 
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -133,12 +194,47 @@ void riscvRstFS(riscvMorphStateP state, Bool useRS1);
 void riscvConfigureVector(riscvP riscv);
 
 //
+// Free vector extension data structures
+//
+void riscvFreeVector(riscvP riscv);
+
+//
 // Adjust JIT code generator state after write of vstart CSR
 //
 void riscvWVStart(riscvMorphStateP state, Bool useRS1);
 
 //
-// Is the specified SEW valid?
+// Return maximum vector length for the given vector type settings
 //
-riscvSEWMt riscvValidSEW(riscvP riscv, Uns8 vsew);
+Uns32 riscvGetMaxVL(riscvP riscv, riscvVType vtype);
+
+//
+// If the specified vtype is valid, return the SEW, otherwise return
+// SEWMT_UNKNOWN
+//
+riscvSEWMt riscvValidVType(riscvP riscv, riscvVType vtype);
+
+//
+// Translate externally-implemented instruction
+//
+void riscvMorphExternal(
+    riscvExtMorphStateP state,
+    const char         *disableReason,
+    Bool               *opaque
+);
+
+//
+// Emit externally-implemented vector operation
+//
+void riscvMorphVOp(
+    riscvP           riscv,
+    Uns64            thisPC,
+    riscvRegDesc     r0,
+    riscvRegDesc     r1,
+    riscvRegDesc     r2,
+    riscvRegDesc     mask,
+    riscvVShape      shape,
+    riscvVExternalFn externalCB,
+    void            *userData
+);
 

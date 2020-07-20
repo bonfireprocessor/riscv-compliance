@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005-2019 Imperas Software Ltd., www.imperas.com
+ * Copyright (c) 2005-2020 Imperas Software Ltd., www.imperas.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -24,12 +24,15 @@
 #include "vmi/vmiAttrs.h"
 #include "vmi/vmiDbg.h"
 #include "vmi/vmiMessage.h"
+#include "vmi/vmiMt.h"
 #include "vmi/vmiRt.h"
 
 // model header files
+#include "riscvCluster.h"
 #include "riscvCSR.h"
 #include "riscvCSRTypes.h"
 #include "riscvDebug.h"
+#include "riscvExceptions.h"
 #include "riscvFunctions.h"
 #include "riscvMessage.h"
 #include "riscvRegisters.h"
@@ -89,7 +92,7 @@ static const vmiRegGroup groups[RV_RG_LAST+1] = {
 //
 // This is the index of the first ISR
 //
-#define RISCV_ISR0_INDEX        0x1000
+#define RISCV_ISR0_INDEX        0x1100
 
 //
 // This is the index of the first vector register
@@ -104,7 +107,7 @@ static const vmiRegGroup groups[RV_RG_LAST+1] = {
 DEFINE_CS(isrDetails);
 
 //
-// Structure filled with CSR register details by riscvGetCSRDetails
+// Structure providing details of integration support registers
 //
 typedef struct isrDetailsS {
     const char       *name;
@@ -117,14 +120,44 @@ typedef struct isrDetailsS {
     vmiRegWriteFn     writeCB;
     vmiRegAccess      access;
     Bool              noTraceChange;
+    riscvDMMode       DM;
 } isrDetails;
+
+//
+// Write processor DM bit (enables or disables Debug mode)
+//
+static VMI_REG_WRITE_FN(writeDM) {
+
+    riscvP riscv = (riscvP)processor;
+    Uns8   DM    = *(Uns8*)buffer;
+
+    riscvSetDM(riscv, DM&1);
+
+    return True;
+}
+
+//
+// Write processor DM stall bit (indicates stalled in Debug mode)
+//
+static VMI_REG_WRITE_FN(writeDMStall) {
+
+    riscvP riscv   = (riscvP)processor;
+    Uns8   DMStall = *(Uns8*)buffer;
+
+    riscvSetDMStall(riscv, DMStall&1);
+
+    return True;
+}
 
 //
 // List of integration support registers
 //
 static const isrDetails isRegs[] = {
 
-    {"LRSCAddress", "LR/SC active lock address", ISA_A, 0, 0,  RISCV_EA_TAG, 0, 0, vmi_RA_RW, 0},
+    {"LRSCAddress", "LR/SC active lock address", ISA_A, 0, 0, RISCV_EA_TAG,     0, 0,            vmi_RA_RW, 0, 0          },
+    {"DM",          "Debug mode active",         0,     1, 8, RISCV_DM,         0, writeDM,      vmi_RA_RW, 0, RVDM_VECTOR},
+    {"DMStall",     "Debug mode stalled",        0,     2, 8, RISCV_DM_STALL,   0, writeDMStall, vmi_RA_RW, 0, RVDM_HALT  },
+    {"commercial",  "Commercial feature in use", 0,     3, 8, RISCV_COMMERCIAL, 0, 0,            vmi_RA_R,  0, 0          },
 
     // KEEP LAST
     {0}
@@ -144,7 +177,15 @@ static isrDetailsCP getNextISRDetails(
         riscvArchitecture arch = riscv->configInfo.arch;
         isrDetailsCP      this = prev ? prev+1 : isRegs;
 
-        while(this->name && ((this->arch&arch)!=this->arch)) {
+        while(
+            this->name &&
+            (
+                // exclude registers not applicable to this architecture
+                ((this->arch&arch)!=this->arch) ||
+                // exclude debug mode registers if that mode is absent
+                (riscv->configInfo.debug_mode<this->DM)
+            )
+        ) {
             this++;
         }
 
@@ -213,8 +254,13 @@ inline static riscvCSRAttrsCP getCSRAttrs(vmiRegInfoCP reg) {
 static VMI_REG_READ_FN(readCSR) {
 
     riscvP riscv = (riscvP)processor;
+    Bool   old   = riscv->artifactAccess;
 
-    return riscvReadCSR(getCSRAttrs(reg), riscv, buffer);
+    riscv->artifactAccess = True;
+    Bool ok = riscvReadCSR(getCSRAttrs(reg), riscv, buffer);
+    riscv->artifactAccess = old;
+
+    return ok;
 }
 
 //
@@ -223,8 +269,13 @@ static VMI_REG_READ_FN(readCSR) {
 static VMI_REG_WRITE_FN(writeCSR) {
 
     riscvP riscv = (riscvP)processor;
+    Bool   old   = riscv->artifactAccess;
 
-    return riscvWriteCSR(getCSRAttrs(reg), riscv, buffer);
+    riscv->artifactAccess = True;
+    Bool ok = riscvWriteCSR(getCSRAttrs(reg), riscv, buffer);
+    riscv->artifactAccess = old;
+
+    return ok;
 }
 
 //
@@ -256,6 +307,7 @@ static vmiRegInfoCP getRegisters(riscvP riscv, Bool normal) {
         Uns32             fprNum = (!normal || (arch&ISA_DF)) ? 32       : 0;
         Uns32             vrNum  = ( normal && (arch&ISA_V))  ? VREG_NUM : 0;
         Uns32             regNum = 0;
+        Uns32             csrNum;
         riscvCSRDetails   csrDetails;
         isrDetailsCP      isrDetails;
         vmiRegInfoP       dst;
@@ -290,7 +342,8 @@ static vmiRegInfoCP getRegisters(riscvP riscv, Bool normal) {
 
         // count visible CSRs
         csrDetails.attrs = 0;
-        while(riscvGetCSRDetails(riscv, &csrDetails, normal)) {
+        csrNum           = 0;
+        while(riscvGetCSRDetails(riscv, &csrDetails, &csrNum, normal)) {
             regNum++;
         }
 
@@ -352,7 +405,8 @@ static vmiRegInfoCP getRegisters(riscvP riscv, Bool normal) {
 
         // fill visible CSRs
         csrDetails.attrs = 0;
-        while(riscvGetCSRDetails(riscv, &csrDetails, normal)) {
+        csrNum           = 0;
+        while(riscvGetCSRDetails(riscv, &csrDetails, &csrNum, normal)) {
             riscvCSRAttrsCP attrs = csrDetails.attrs;
             dst->name          = attrs->name;
             dst->description   = attrs->desc;
@@ -364,6 +418,7 @@ static vmiRegInfoCP getRegisters(riscvP riscv, Bool normal) {
             dst->readCB        = csrDetails.rdRaw ? 0 : readCSR;
             dst->writeCB       = csrDetails.wrRaw ? 0 : writeCSR;
             dst->userData      = (void *)attrs;
+            dst->noSaveRestore = attrs->noSaveRestore;
             dst->noTraceChange = attrs->noTraceChange;
             dst->extension     = csrDetails.extension;
             dst++;
@@ -506,7 +561,7 @@ void riscvFreeRegInfo(riscvP riscv) {
     vmirtRegImplRaw(processor, _REG, _FIELD, _BITS)
 
 //
-// Helper macro for defining field-to register mappings
+// Helper macro for defining field-to-register mappings
 //
 #define RISCV_FIELD_IMPL_RAW(_REGINFO, _FIELD) { \
     Uns32 bits = sizeof(((riscvP)0)->_FIELD) * 8;               \
@@ -525,17 +580,18 @@ void riscvFreeRegInfo(riscvP riscv) {
 //
 VMI_REG_IMPL_FN(riscvRegImpl) {
 
-    // specify that fpFlags are in fflags
+    // specify that fpFlags is in fflags
     vmiRegInfoCP fflags = vmirtGetRegByName(processor, "fflags");
     RISCV_FIELD_IMPL_RAW(fflags, fpFlagsMT);
+
+    // specify that SFMT is in vxsat
+    vmiRegInfoCP vxsat = vmirtGetRegByName(processor, "vxsat");
+    RISCV_FIELD_IMPL_RAW(vxsat, SFMT);
 
     // exclude artifact registers
     RISCV_FIELD_IMPL_IGNORE(pmKey);
     RISCV_FIELD_IMPL_IGNORE(vFirstFault);
     RISCV_FIELD_IMPL_IGNORE(vBase);
-    RISCV_FIELD_IMPL_IGNORE(offsetsLMULx2);
-    RISCV_FIELD_IMPL_IGNORE(offsetsLMULx4);
-    RISCV_FIELD_IMPL_IGNORE(offsetsLMULx8);
     RISCV_FIELD_IMPL_IGNORE(jumpBase);
 }
 
@@ -549,9 +605,15 @@ VMI_REG_IMPL_FN(riscvRegImpl) {
 //
 VMI_PROC_DESC_FN(riscvProcessorDescription) {
 
-    riscvP riscv = (riscvP)processor;
-    riscvP child = getChild(riscv);
+    riscvP      riscv  = (riscvP)processor;
+    const char *result = "Hart";
 
-    return child ? "Cluster" : "Hart";
+    if(riscvIsCluster(riscv)) {
+        result = "Cluster";
+    } else if(getChild(riscv)) {
+        result = "SMP";
+    }
+
+    return result;
 }
 

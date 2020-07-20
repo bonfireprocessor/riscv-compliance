@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005-2019 Imperas Software Ltd., www.imperas.com
+ * Copyright (c) 2005-2020 Imperas Software Ltd., www.imperas.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -84,8 +84,8 @@ void riscvNewRootBusPorts(riscvP riscv) {
     riscvBusPortPP tail  = &riscv->busPorts;
     Uns32          xlen  = riscvGetXlenArch(riscv);
     Uns32          min   = 32;
-    Uns32          max   = (xlen==32) ? RISCV_PMP_BITS_32 : RISCV_PMP_BITS_64;
-    Uns32          unset = max;
+    Uns32          unset = (xlen==32) ? RISCV_PMP_BITS_32 : RISCV_PMP_BITS_64;
+    Uns32          max   = (xlen==32) ? RISCV_PMP_BITS_32 : 64;
 
     // instruction port
     newBusPort(

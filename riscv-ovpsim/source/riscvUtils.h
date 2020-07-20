@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005-2019 Imperas Software Ltd., www.imperas.com
+ * Copyright (c) 2005-2020 Imperas Software Ltd., www.imperas.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -53,9 +53,29 @@ Uns32 riscvGetFlenArch(riscvP riscv);
 Uns32 riscvGetXlenMode(riscvP riscv);
 
 //
+// Does the processor support configurable endianness?
+//
+Bool riscvSupportEndian(riscvP riscv);
+
+//
+// Return endianness for data access in the given mode
+//
+memEndian riscvGetDataEndian(riscvP riscv, riscvMode mode);
+
+//
+// Return endianness for data access in the current mode
+//
+memEndian riscvGetCurrentDataEndian(riscvP riscv);
+
+//
 // Register extension callback block with the base model
 //
-void riscvRegisterExtCB(riscvP riscv, riscvExtCBP extCB);
+void riscvRegisterExtCB(riscvP riscv, riscvExtCBP extCB, Uns32 id);
+
+//
+// Return the indexed extension's extCB clientData
+//
+void *riscvGetExtClientData(riscvP riscv, Uns32 id);
 
 //
 // Return extension configuration with the given id

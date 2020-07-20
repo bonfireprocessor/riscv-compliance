@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005-2019 Imperas Software Ltd., www.imperas.com
+ * Copyright (c) 2005-2020 Imperas Software Ltd., www.imperas.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,8 +29,10 @@
 #include "riscvCSR.h"
 #include "riscvDecode.h"
 #include "riscvDecodeTypes.h"
+#include "riscvDisassemble.h"
 #include "riscvDisassembleFormats.h"
 #include "riscvFunctions.h"
+#include "riscvModelCallbackTypes.h"
 #include "riscvUtils.h"
 
 
@@ -117,8 +119,13 @@ static void putInstruction(riscvInstrInfoP info, char **result) {
         fmt = "%08x ";
     }
 
+    // mask raw instruction pattern to instruction byte size (prevents
+    // misleading disassembly when compressed instruction encountered by
+    // processor that does not support such instructions)
+    Uns32 instruction = info->instruction & ((1ULL<<(info->bytes*8))-1);
+
     // emit basic opcode string
-    *result += sprintf(*result, fmt, info->instruction);
+    *result += sprintf(*result, fmt, instruction);
 }
 
 //
@@ -240,26 +247,30 @@ static void putFence(
 //
 // Emit rounding mode argument
 //
-static void putOptRM(char **result, riscvRMDesc rm, Bool uncooked) {
-
+static void putOptRM(
+    char      **result,
+    riscvRMDesc rm,
+    Bool        explicitRM,
+    Bool        uncooked
+) {
     if(rm) {
 
         putUncookedKey(result, " RM", uncooked);
 
-        if(uncooked && (rm==RV_RM_CURRENT)) {
+        if(!uncooked && explicitRM) {
 
-            putString(result, "rmc");
+            // rounding mode in opcode (not consistent with base architecture)
 
         } else {
 
             static const char *map[] = {
-                [RV_RM_NA]      = "",
                 [RV_RM_CURRENT] = "",
                 [RV_RM_RTE]     = "rte",
                 [RV_RM_RTZ]     = "rtz",
                 [RV_RM_RDN]     = "rdn",
                 [RV_RM_RUP]     = "rup",
                 [RV_RM_RMM]     = "rmm",
+                [RV_RM_ROD]     = "rod",
                 [RV_RM_BAD5]    = "rm5",
                 [RV_RM_BAD6]    = "rm6",
             };
@@ -272,12 +283,53 @@ static void putOptRM(char **result, riscvRMDesc rm, Bool uncooked) {
 //
 // Emit VType argument
 //
-static void putVType(char **result, Uns8 vsew, Uns8 vlmul) {
+static void putVType(char **result, riscvP riscv, riscvVType vtype) {
 
+    Int32       svlmul    = getVTypeSVLMUL(vtype);
+    const char *mulString = (svlmul<0) ? "mf" : "m";
+    Uns32       vlmul     = (svlmul<0) ? -svlmul : svlmul;
+
+    // put common fields
     putChar(result, 'e');
-    putD(result, 8<<vsew);
-    putString(result, ",m");
+    putD(result, getVTypeSEW(vtype));
+    putChar(result, ',');
+    putString(result, mulString);
     putD(result, 1<<vlmul);
+
+    // add agnostic indications if implemented
+    if(riscvVFSupport(riscv, RVVF_AGNOSTIC)) {
+        putChar(result, ',');
+        putString(result, getVTypeVTA(vtype) ? "ta" : "tu");
+        putChar(result, ',');
+        putString(result, getVTypeVMA(vtype) ? "ma" : "mu");
+    }
+}
+
+//
+// Return B/H/W/D extension based on bits
+//
+inline static char getBHWD(Uns32 bits) {
+
+    char result = 0;
+
+    switch(bits) {
+        case 8:
+            result = 'b';
+            break;
+        case 16:
+            result = 'h';
+            break;
+        case 32:
+            result = 'w';
+            break;
+        case 64:
+            result = 'd';
+            break;
+        default:
+            VMI_ABORT("Unimplemented bits %u", bits); // LCOV_EXCL_LINE
+    }
+
+    return result;
 }
 
 //
@@ -286,14 +338,21 @@ static void putVType(char **result, Uns8 vsew, Uns8 vlmul) {
 static riscvRegDesc putType(
     char          **result,
     riscvInstrInfoP info,
-    riscvRegDesc    this,
+    Uns32           argIndex,
     riscvRegDesc    prev
 ) {
-    if(this && !isQReg(this) && (getRType(this)!=getRType(prev))) {
+    riscvRegDesc this         = info->r[argIndex];
+    Uns32        explicitType = info->explicitType;
+
+    if(explicitType && (argIndex<(explicitType-1))) {
+
+        // skip to the first operand for which type should be reported
+
+    } else if(this && !isQReg(this) && (getRType(this)!=getRType(prev))) {
 
         Uns32 bits = getRBits(this);
 
-        if(info->explicitType) {
+        if(explicitType) {
 
             // emit dot before type
             putChar(result, '.');
@@ -304,7 +363,7 @@ static riscvRegDesc putType(
             } else if(isWLReg(this)) {
                 putChar(result, (bits==32) ? 'w' : 'l');
             } else if(isXReg(this)) {
-                putChar(result, (bits==32) ? 'w' : 'd');
+                putChar(result, getBHWD(bits));
             } else if(isFReg(this)) {
                 putChar(result, (bits==32) ? 's' : 'd');
             } else {
@@ -336,27 +395,56 @@ static void putOpcode(char **result, riscvP riscv, riscvInstrInfoP info) {
     riscvRegDesc type = RV_RD_NA;
     Uns32        i;
 
+    // emit shift prefix if required
+    if(info->shN) {
+        putString(result, "sh");
+        putD(result, info->shN);
+    }
+
     // emit basic opcode
     putString(result, info->opcode);
 
     // emit modifiers based on argument register types
     for(i=0; i<RV_MAX_AREGS; i++) {
-        type = putType(result, info, info->r[i], type);
+        type = putType(result, info, i, type);
     }
 
-    // emit number of fields if required
-    if(info->nf) {
-        putString(result, "seg");
+    if(info->isWhole) {
+
+        // whole register load/store
         putD(result, info->nf+1);
-    }
+        putChar(result, 'r');
 
-    // emit size modifier if required
-    switch(info->memBits) {
-        case 8:  putChar(result, 'b'); break;
-        case 16: putChar(result, 'h'); break;
-        case 32: putChar(result, 'w'); break;
-        case 64: putChar(result, 'd'); break;
-        case -1: putChar(result, 'e'); break;
+        // emit version 1.0 EEW hint if required
+        if(riscvVFSupport(riscv, RVVF_VLR_HINT)) {
+            putChar(result, 'e');
+            putD(result, info->eew);
+        }
+
+    } else {
+
+        // emit number of fields if required
+        if(info->nf) {
+            putString(result, "seg");
+            putD(result, info->nf+1);
+        }
+
+        if(info->eew) {
+
+            // version 0.9 EEW
+            putChar(result, 'e');
+            if(info->memBits==-1) {putChar(result, 'i');}
+            putD(result, info->eew);
+
+        } else switch(info->memBits) {
+
+            // standard memBits
+            case 8:  putChar(result, 'b'); break;
+            case 16: putChar(result, 'h'); break;
+            case 32: putChar(result, 'w'); break;
+            case 64: putChar(result, 'd'); break;
+            case -1: putChar(result, 'e'); break;
+        }
     }
 
     // emit unsigned modifier if required
@@ -374,30 +462,50 @@ static void putOpcode(char **result, riscvP riscv, riscvInstrInfoP info) {
         putString(result, "ff");
     }
 
+    // type describing suffix actions
+    typedef struct viDescInfoS {
+        const char *suffix;     // initial suffix
+        Bool        addMaskM;   // add m if mask is specified
+    } viDescInfo;
+
     // vector suffixes
-    static const char *viDescs[] = {
-        [RV_VIT_NA]  = "",
-        [RV_VIT_V]   = ".v",
-        [RV_VIT_VV]  = ".vv",
-        [RV_VIT_VI]  = ".vi",
-        [RV_VIT_VX]  = ".vx",
-        [RV_VIT_WV]  = ".wv",
-        [RV_VIT_WX]  = ".wx",
-        [RV_VIT_VF]  = ".vf",
-        [RV_VIT_WF]  = ".wf",
-        [RV_VIT_VS]  = ".vs",
-        [RV_VIT_M]   = ".m",
-        [RV_VIT_MM]  = ".mm",
-        [RV_VIT_VM]  = ".vm",
-        [RV_VIT_VVM] = ".vvm",
-        [RV_VIT_VXM] = ".vxm",
-        [RV_VIT_VIM] = ".vim",
-        [RV_VIT_VFM] = ".vfm",
+    static const viDescInfo viDescs[RV_VIT_LAST] = {
+        [RV_VIT_NA]  = {"",     0},
+        [RV_VIT_V]   = {".v",   0},
+        [RV_VIT_W]   = {".w",   0},
+        [RV_VIT_VV]  = {".vv",  0},
+        [RV_VIT_VI]  = {".vi",  0},
+        [RV_VIT_VX]  = {".vx",  0},
+        [RV_VIT_WV]  = {".wv",  0},
+        [RV_VIT_WI]  = {".wi",  0},
+        [RV_VIT_WX]  = {".wx",  0},
+        [RV_VIT_VF]  = {".vf",  0},
+        [RV_VIT_WF]  = {".wf",  0},
+        [RV_VIT_VS]  = {".vs",  0},
+        [RV_VIT_M]   = {".m",   0},
+        [RV_VIT_MM]  = {".mm",  0},
+        [RV_VIT_VM]  = {".vm",  0},
+        [RV_VIT_VVM] = {".vv",  1},
+        [RV_VIT_VXM] = {".vx",  1},
+        [RV_VIT_VIM] = {".vi",  1},
+        [RV_VIT_VFM] = {".vf",  1},
+        [RV_VIT_V_V] = {".v.v", 0},
     };
 
     // emit vector suffix
     VMI_ASSERT(info->VIType<NUM_MEMBERS(viDescs), "bad VIType (%u)", info->VIType);
-    putString(result, viDescs[info->VIType]);
+    putString(result, viDescs[info->VIType].suffix);
+
+    // add additional 'm' if mask is specified
+    if(viDescs[info->VIType].addMaskM && info->mask) {
+        putChar(result, 'm');
+    }
+
+    // add EEW divisor if specified
+    if(info->eewDiv) {
+        putChar(result, 'f');
+        putD(result, info->eewDiv);
+    }
 
     // acquire/release modifier suffixes
     static const char *aqrlDescs[] = {
@@ -511,7 +619,7 @@ static void disassembleFormat(
                     break;
                 case EMIT_VTYPE:
                     putUncookedKey(result, " VTYPE", uncooked);
-                    putVType(result, info->vsew, info->vlmul);
+                    putVType(result, riscv, info->vtype);
                     break;
                 case EMIT_RM:
                     putOptMask(result, info->mask, ".t", uncooked);
@@ -536,7 +644,7 @@ static void disassembleFormat(
     }
 
     // emit optional rounding mode
-    putOptRM(result, info->rm, uncooked);
+    putOptRM(result, info->rm, info->explicitRM, uncooked);
 
     // strip trailing whitespace and commas
     char *tail = (*result)-1;
@@ -592,6 +700,34 @@ VMI_DISASSEMBLE_FN(riscvDisassemble) {
     riscvDecode(riscv, thisPC, &info);
 
     // return disassembled instruction
+    return disassembleInfo(riscv, &info, attrs);
+}
+
+//
+// Disassemble unpacked instruction using the given format
+//
+const char *riscvDisassembleInstruction(
+    riscvP             riscv,
+    riscvExtInstrInfoP instrInfo,
+    vmiDisassAttrs     attrs
+) {
+    riscvInstrInfo info = {0};
+
+    // fill source from interpreted fields
+    info.opcode      = instrInfo->opcode;
+    info.format      = instrInfo->format;
+    info.instruction = instrInfo->instruction;
+    info.bytes       = instrInfo->bytes;
+    info.arch        = instrInfo->arch;
+    info.r[0]        = instrInfo->r[0];
+    info.r[1]        = instrInfo->r[1];
+    info.r[2]        = instrInfo->r[2];
+    info.r[3]        = instrInfo->r[3];
+    info.mask        = instrInfo->mask;
+    info.rm          = instrInfo->rm;
+    info.c           = instrInfo->c;
+
+    // do disassembly
     return disassembleInfo(riscv, &info, attrs);
 }
 

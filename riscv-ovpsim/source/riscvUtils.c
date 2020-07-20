@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005-2019 Imperas Software Ltd., www.imperas.com
+ * Copyright (c) 2005-2020 Imperas Software Ltd., www.imperas.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@
 // model header files
 #include "riscvBlockState.h"
 #include "riscvDecode.h"
+#include "riscvExceptions.h"
 #include "riscvFunctions.h"
 #include "riscvMessage.h"
 #include "riscvMode.h"
@@ -36,10 +37,12 @@
 
 
 //
-// Return any chld of the passed processor
+// Write a net port
 //
-inline static riscvP getChild(riscvP riscv) {
-    return (riscvP)vmirtGetSMPChild((vmiProcessorP)riscv);
+inline static void writeNet(riscvP riscv, Uns32 handle, Uns32 value) {
+    if(handle) {
+        vmirtWriteNetPort((vmiProcessorP)riscv, handle, value);
+    }
 }
 
 //
@@ -47,17 +50,43 @@ inline static riscvP getChild(riscvP riscv) {
 //
 void riscvSetCurrentArch(riscvP riscv) {
 
+    Uns32 MXL = RD_CSR_FIELD(riscv, misa, MXL);
+    Bool  FS  = (RD_CSR_FIELD(riscv, mstatus, FS) != 0);
+
     // derive new architecture value based on misa value, preserving rounding
     // mode invalid setting
     riscvArchitecture arch = (
         (riscv->currentArch & ISA_RM_INVALID) |
         RD_CSR_FIELD(riscv, misa, Extensions) |
-        (RD_CSR_FIELD(riscv, misa, MXL)<<XLEN_SHIFT)
+        (MXL<< XLEN_SHIFT)                    |
+        (FS << MSTATUS_FS_SHIFT)
     );
 
     // mstatus.FS=0 disables floating point extensions
-    if(!RD_CSR_FIELD(riscv, mstatus, FS)) {
+    if(!FS) {
         arch &= ~ISA_DF;
+    }
+
+    // mstatus.VS=0 disables vector extensions (if implemented)
+    if(arch & ISA_V) {
+
+        Uns32 WM_mstatus_VS = 0;
+
+        // get mask of dirty bits for mstatus.VS in either 0.8 or 0.9 location
+        if(riscvVFSupport(riscv, RVVF_VS_STATUS_8)) {
+            WM_mstatus_VS = WM_mstatus_VS_8;
+        } else if(riscvVFSupport(riscv, RVVF_VS_STATUS_9)) {
+            WM_mstatus_VS = WM_mstatus_VS_9;
+        }
+
+        if(WM_mstatus_VS && !(RD_CSR(riscv, mstatus) & WM_mstatus_VS)) {
+            arch &= ~ISA_V;
+        }
+    }
+
+    // handle big endian access if required
+    if(riscv->checkEndian && riscvGetCurrentDataEndian(riscv)) {
+        arch |= ISA_BE;
     }
 
     if(riscv->currentArch != arch) {
@@ -80,14 +109,11 @@ Uns32 riscvGetXlenArch(riscvP riscv) {
 
     riscvArchitecture arch   = riscv->configInfo.arch;
     Uns32             result = 0;
-    riscvP            child;
 
     if(arch & ISA_XLEN_64) {
         result = 64;
     } else if(arch & ISA_XLEN_32) {
         result = 32;
-    } else if((child=getChild(riscv))) {
-        return riscvGetXlenArch(child);
     } else {
         VMI_ABORT("invalid XLEN"); // LCOV_EXCL_LINE
     }
@@ -114,9 +140,9 @@ Uns32 riscvGetFlenArch(riscvP riscv) {
 }
 
 //
-// Register extension callback block with the base model
+// Register extension callback block for the id with the base model
 //
-void riscvRegisterExtCB(riscvP riscv, riscvExtCBP extCB) {
+void riscvRegisterExtCB(riscvP riscv, riscvExtCBP extCB, Uns32 id) {
 
     riscvExtCBPP tail = &riscv->extCBs;
     riscvExtCBP  this;
@@ -127,6 +153,21 @@ void riscvRegisterExtCB(riscvP riscv, riscvExtCBP extCB) {
 
     *tail = extCB;
     extCB->next = 0;
+    extCB->id   = id;
+}
+
+//
+// Return the indexed extension's extCB clientData
+//
+void *riscvGetExtClientData(riscvP riscv, Uns32 id) {
+
+    riscvExtCBP this = riscv->extCBs;
+
+    while(this && (this->id!=id)) {
+        this = this->next;
+    }
+
+    return this ? this->clientData : 0;
 }
 
 //
@@ -166,6 +207,42 @@ Uns32 riscvGetXlenMode(riscvP riscv) {
 }
 
 //
+// Does the processor support configurable endianness?
+//
+Bool riscvSupportEndian(riscvP riscv) {
+    return (RISCV_PRIV_VERSION(riscv)>RVPV_20190405);
+}
+
+//
+// Return endianness for data access in the given mode
+//
+memEndian riscvGetDataEndian(riscvP riscv, riscvMode mode) {
+
+    memEndian result = riscv->dendian;
+
+    if(!riscvSupportEndian(riscv)) {
+        // no action
+    } else if(mode==RISCV_MODE_USER) {
+        result = RD_CSR_FIELD(riscv, mstatus, UBE);
+    } else if(mode==RISCV_MODE_SUPERVISOR) {
+        result = RD_CSR_FIELD_ALT(riscv, mstatush, mstatus, SBE);
+    } else if(mode==RISCV_MODE_MACHINE) {
+        result = RD_CSR_FIELD_ALT(riscv, mstatush, mstatus, MBE);
+    } else {
+        VMI_ABORT("invalid mode"); // LCOV_EXCL_LINE
+    }
+
+    return result;
+}
+
+//
+// Return endianness for data access in the current mode
+//
+memEndian riscvGetCurrentDataEndian(riscvP riscv) {
+    return riscvGetDataEndian(riscv, riscv->dmode);
+}
+
+//
 // Return endianness of access
 //
 VMI_ENDIAN_FN(riscvGetEndian) {
@@ -175,7 +252,7 @@ VMI_ENDIAN_FN(riscvGetEndian) {
     if(isFetch) {
         return riscv->iendian;
     } else {
-        return riscv->dendian;
+        return riscvGetCurrentDataEndian(riscv);
     }
 }
 
@@ -229,6 +306,12 @@ static const vmiModeInfo modes[] = {
         .description = "Machine mode"
     },
 
+    [RISCV_MODE_DEBUG] = {
+        .name        = "Debug",
+        .code        = RISCV_MODE_DEBUG,
+        .description = "Debug mode"
+    },
+
     // terminator
     {0}
 };
@@ -247,7 +330,7 @@ VMI_GET_MODE_FN(riscvGetMode) {
 
     riscvP riscv = (riscvP)processor;
 
-    return &modes[getCurrentMode(riscv)];
+    return &modes[inDebugMode(riscv) ? RISCV_MODE_DEBUG : getCurrentMode(riscv)];
 }
 
 //
@@ -273,6 +356,12 @@ void riscvSetMode(riscvP riscv, riscvMode mode) {
     // refresh current data domain (may be modified by mstatus.MPRV, and may
     // have changed while taking an exception even if mode has not changed)
     riscvVMRefreshMPRVDomain(riscv);
+
+    // set step breakpoint if required
+    riscvSetStepBreakpoint(riscv);
+
+    // update active mode output signal (external CLIC)
+    writeNet(riscv, riscv->sec_lvl_Handle, mode);
 }
 
 //
@@ -301,6 +390,8 @@ Bool riscvHasMode(riscvP riscv, riscvMode mode) {
             return riscv->configInfo.arch & ISA_S;
         case RISCV_MODE_MACHINE:
             return True;
+        case RISCV_MODE_DEBUG:
+            return riscv->configInfo.debug_mode;
         default:
             return False;
     }
@@ -474,7 +565,7 @@ const char *riscvGetVRegName(Uns32 index) {
 //
 vmiReg riscvGetVReg(riscvP riscv, Uns32 index) {
 
-    void *value = &riscv->v[index*riscv->configInfo.VLEN/64];
+    void *value = &riscv->v[index*riscv->configInfo.VLEN/32];
 
     return vmimtGetExtReg((vmiProcessorP)riscv, value);
 }
@@ -517,6 +608,7 @@ const char *riscvGetFeatureName(riscvArchitecture feature) {
         [RISCV_FEATURE_INDEX(XLEN32_CHAR)] = "32-bit XLEN",
         [RISCV_FEATURE_INDEX(XLEN64_CHAR)] = "64-bit XLEN",
         [RISCV_FEATURE_INDEX('A')]         = "extension A (atomic instructions)",
+        [RISCV_FEATURE_INDEX('B')]         = "extension B (bit manipulation extension)",
         [RISCV_FEATURE_INDEX('C')]         = "extension C (compressed instructions)",
         [RISCV_FEATURE_INDEX('E')]         = "RV32E base ISA",
         [RISCV_FEATURE_INDEX('D')]         = "extension D (double-precision floating point)",
@@ -526,7 +618,7 @@ const char *riscvGetFeatureName(riscvArchitecture feature) {
         [RISCV_FEATURE_INDEX('N')]         = "extension N (user-level interrupts)",
         [RISCV_FEATURE_INDEX('S')]         = "extension S (Supervisor mode)",
         [RISCV_FEATURE_INDEX('U')]         = "extension U (User mode)",
-        [RISCV_FEATURE_INDEX('V')]         = "extension V (vector instructions)",
+        [RISCV_FEATURE_INDEX('V')]         = "extension V (vector extension)",
         [RISCV_FEATURE_INDEX('X')]         = "extension X (non-standard extensions present)"
     };
 
@@ -585,8 +677,10 @@ static VMI_MEM_WATCH_FN(abortEA) {
 static void updateExclusiveAccessCallback(riscvP riscv, Bool install) {
 
     memDomainP domain  = vmirtGetProcessorDataDomain((vmiProcessorP)riscv);
-    Uns64      simLow  = riscv->exclusiveTag;
-    Uns64      simHigh = simLow + ~riscv->exclusiveTagMask;
+    Uns32      bits    = vmirtGetDomainAddressBits(domain);
+    Uns64      mask    = (bits==64) ? -1 : ((1ULL<<bits)-1);
+    Uns64      simLow  = mask & riscv->exclusiveTag;
+    Uns64      simHigh = mask & (simLow + ~riscv->exclusiveTagMask);
 
     // install or remove a watchpoint on the current exclusive access address
     if(install) {

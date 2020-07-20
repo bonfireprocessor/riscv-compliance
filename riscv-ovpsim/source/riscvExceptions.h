@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2005-2019 Imperas Software Ltd., www.imperas.com
+ * Copyright (c) 2005-2020 Imperas Software Ltd., www.imperas.com
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,6 +31,15 @@
 // Take processor exception
 //
 void riscvTakeException(
+    riscvP         riscv,
+    riscvException exception,
+    Uns64          tval
+);
+
+//
+// Take asynchronous processor exception
+//
+void riscvTakeAsynchonousException(
     riscvP         riscv,
     riscvException exception,
     Uns64          tval
@@ -87,14 +96,39 @@ void riscvSRET(riscvP riscv);
 void riscvURET(riscvP riscv);
 
 //
+// Return from Debug mode
+//
+void riscvDRET(riscvP riscv);
+
+//
+// Enter or leave debug mode
+//
+void riscvSetDM(riscvP riscv, Bool DM);
+
+//
+// Update debug mode stall indication
+//
+void riscvSetDMStall(riscvP riscv, Bool DMStall);
+
+//
+// Set step breakpoint if required
+//
+void riscvSetStepBreakpoint(riscvP riscv);
+
+//
 // Halt the processor in WFI state if required
 //
 void riscvWFI(riscvP riscv);
 
 //
-// Return mask of implemented local interrupts
+// Does the processor implement the exception or interrupt?
 //
-Uns64 riscvGetLocalIntMask(riscvP riscv);
+Bool riscvHasException(riscvP riscv, riscvException code);
+
+//
+// Return total number of interrupts (including 0 to 15)
+//
+Uns32 riscvGetIntNum(riscvP riscv);
 
 //
 // Initialize mask of implemented exceptions
@@ -113,6 +147,11 @@ void riscvExceptFree(riscvP riscv);
 void riscvUpdatePending(riscvP riscv);
 
 //
+// Refresh pending-and-enabled interrupt state
+//
+void riscvRefreshPendingAndEnabled(riscvP riscv);
+
+//
 // Check for pending interrupts
 //
 void riscvTestInterrupt(riscvP riscv);
@@ -126,6 +165,16 @@ void riscvNewNetPorts(riscvP riscv);
 // Free ports
 //
 void riscvFreeNetPorts(riscvP riscv);
+
+//
+// Allocate timers
+//
+void riscvNewTimers(riscvP riscv);
+
+//
+// Free timers
+//
+void riscvFreeTimers(riscvP riscv);
 
 //
 // Save net state not covered by register read/write API
@@ -144,3 +193,22 @@ void riscvNetRestore(
     vmiRestoreContextP  cxt,
     vmiSaveRestorePhase phase
 );
+
+//
+// Save timer state not covered by register read/write API
+//
+void riscvTimerSave(
+    riscvP              riscv,
+    vmiSaveContextP     cxt,
+    vmiSaveRestorePhase phase
+);
+
+//
+// Restore timer state not covered by register read/write API
+//
+void riscvTimerRestore(
+    riscvP              riscv,
+    vmiRestoreContextP  cxt,
+    vmiSaveRestorePhase phase
+);
+
