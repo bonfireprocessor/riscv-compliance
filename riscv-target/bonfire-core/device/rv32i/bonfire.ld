@@ -7,9 +7,7 @@ SECTIONS
 
 
   . = 0x00000000;
-  .text.init : { *(.text.init) }
-  . = 0x00000080;
-  .text.trap : { *(.text.trap) }
+  .text : { *(.text) }
 
   . = ALIGN(0x1000);
   .data : { *(.data) }
@@ -18,11 +16,9 @@ SECTIONS
 
   .bss : { *(.bss) }
   _end = .;
+  . = _end + 256;
+  . = ALIGN(256);
+  stack = .;
 }
 
-
 monitor = 0x10000000;
-signature_dump_port =0x1ffffffc;
-uart =  0x20000000;
-
-mtime   = 0x0FFFF0000;
