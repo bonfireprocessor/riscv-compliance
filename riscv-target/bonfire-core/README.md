@@ -20,9 +20,24 @@ If all prerequistes are met, the Tests can be invoked with
 
 It will run the following test suites:
 
-    rv32i 
+    rv32i rv32Zicsr
 
 ### Result:
+
+For rv32Zicsr
+
+```
+Check               I-CSRRC-01 ... OK
+Check              I-CSRRCI-01 ... OK
+Check               I-CSRRS-01 ... OK
+Check              I-CSRRSI-01 ... OK
+Check               I-CSRRW-01 ... OK
+Check              I-CSRRWI-01 ... OK
+--------------------------------
+OK: 6/6 RISCV_TARGET=bonfire-core RISCV_DEVICE=rv32Zicsr RISCV_ISA=rv32Zicsr
+```
+For rv32i:
+
 Because bonfire-core currenlty has no privilege mode tests that rely on it are ignored:
 
 ```
@@ -85,3 +100,7 @@ E.g. adding
     PARALLEL=1 JOBS="-j8"
 
 to the command line will run 8 paralell processes.
+
+To run a specific test suite like RV32Zicsr use
+
+    RISCV_ISA=rv32Zicsr
