@@ -1,0 +1,1 @@
+include  $(ROOTDIR)/riscv-target/bonfire-core/device/rv32i/Makefile.include
