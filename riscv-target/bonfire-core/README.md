@@ -13,10 +13,14 @@ There are different possiblties to get a RISC-V toolchain. Aside from building f
 
 However, the RISC-V toolchain must be found by the compliance suite. The envrionment variable RISCV_PREFIX defines the prefix (with our without path...) for invoking gcc and other tools from the chain.
 
+#### Update 28.01.2024:
+Because RISCV GCC recently changed the march parameters, for compling tests with CSR instructions _zicsr must be appended to the march parameter (e.g rv32i_zicsr)
+The Makefiles are now patched to be compliant with newer gcc. The suite now only runs with newer GCCs - currently it is tested with GCC 13.2
+
 
 If all prerequistes are met, the Tests can be invoked with
 
-    make RISCV_TARGET=bonfire-core BONFIRE_CORE_ROOT<path to bonfire-core repo>
+    make RISCV_TARGET=bonfire-core BONFIRE_CORE_ROOT=<path to bonfire-core repo>
 
 It will run the following test suites:
 
