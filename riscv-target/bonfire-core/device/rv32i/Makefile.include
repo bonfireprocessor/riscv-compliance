@@ -1,13 +1,13 @@
 BONFIRE     = $(ROOTDIR)/riscv-target/bonfire-core/device/rv32i
 LDSCRIPT    = $(ROOTDIR)/riscv-target/bonfire-core/device/rv32i/bonfire.ld
 DEFINES     = -DPRIV_MISA_S=0 -DPRIV_MISA_U=0
-BONFIRE_CONF ?= 
+BONFIRE_OPTIONS ?= 
 #BONFIRE_CORESROOT ?= $(BONFIRE)
 #BONFIRE_CPU ?= bonfire-cpu 
 BONFIRE_CORE_ROOT ?=~/development/bonfire/bonfire-core
 PYTHON ?= python3
 
-TARGET_SIM   ?= $(BONFIRE_CORE_ROOT)/run_compliance.sh
+TARGET_SIM   ?= $(PYTHON) $(BONFIRE_CORE_ROOT)/run_compliance.py $(BONFIRE_OPTIONS)
 TARGET_FLAGS ?= $(RISCV_TARGET_FLAGS)
 
 RUN_TARGET=\
