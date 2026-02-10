@@ -7,14 +7,14 @@ BONFIRE_CONF ?=
 BONFIRE_CORE_ROOT ?=~/development/bonfire/bonfire-core
 PYTHON ?= python3
 
-TARGET_SIM   ?= $(PYTHON) $(BONFIRE_CORE_ROOT)/tb_run.py $(BONFIRE_CONF)
+TARGET_SIM   ?= $(BONFIRE_CORE_ROOT)/run_compliance.sh
 TARGET_FLAGS ?= $(RISCV_TARGET_FLAGS)
 
 RUN_TARGET=\
     $(TARGET_SIM)  \
-        --elf=$(*).elf \
-		--hex=$(*).elf.hex \
-		--sig=$(*).signature.output
+	    --hex $(*).elf.hex \
+        --elf $(*).elf \
+		--sig $(*).signature.output
 	    
 
 RISCV_PREFIX   ?= riscv64-unknown-elf-
